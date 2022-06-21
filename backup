@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+
+# this script makes a backup of important files 
+# in home directory. Arguments: destination folder
+# the files backed up are described in
+# ~/.config/backup/conf, one file/directory
+# per line. The backups is done recursively.
+# To avoid backing up a file/directory,
+# prepend ! to that file/dir name in the config file
+
+function usage {
+    cat <<EOF
+
+    backup [-h][-c <config>][-i <files>][-f <backup_directory>][-o <output>]
+
+    backup -h
+        print this help and exit
+
+    backup -c <config>
+        Specify a different configuration file
+
+    backup -i <files>
+        Specify the files to backup as a comma separated list.
+        This will ignore the configuration file.
+
+    backup -f <backup_directory>
+        Save the archive in <backup_directory>.
+
+    backup -o <output>
+        Save the archive as <output>
+
+backup is a cli utility that does only one thing, in a very dumb way:
+parses through a configuration file located in '\$HOME/.config/backup/conf' by
+default and archives and compresses all the files and directories specified in
+that configuration, and stores the result in a directory of your choice. For
+example, if you type:
+
+    backup -f /mnt/backup_dir
+
+backup will archive and compress everything specified in the configuration
+file (recursively), and then save the archive in
+/mnt/backup_dir/YYYY_MM_DD_backup.tar.gz.
+If the configuration file is empty, backup will prompt just backup the entire
+filesystem starting from \$HOME. If the -f flag is missing, it defaults
+to \$HOME
+
+You can specify a different configuration file with -c flag, or you can
+list the files and directories to backups as a comma separated list with
+the -i flag.
+
+Remember that for both the -c and -f flag, you must specify absolute paths.
+
+
+CONFIGURATION
+
+The configuration is very simple: a file or directory name for every line. If
+you want to excl ude something from the backup that would otherwise be
+included, write it like you would normally do to i nclude it, but prepend it
+with a bang: '!'. That's it.
+
+EOF
+}
+
+function loading {
+
+    pid=$!
+    frames="/ - \\ |"
+    
+    while kill -0 $pid > /dev/null 2>&1; do
+        for frame in $frames; do
+            printf "\r$frame Backing up..."
+            sleep 0.5
+        done
+    done
+    
+    printf "\n"
+}
+
+function parser {
+    # check if conf file exists and it is not a directory
+    [ -e "$1" -a ! -d "$1"  ] || return 0
+    # parse the config file
+    while read directory; do
+        if [[ "$directory" =~ '!' ]]; then
+            local not_to_backup+="-path \"*${directory:1}*\" -prune -o "
+        else
+            local docs_to_backup+="$directory "
+        fi
+    done < "$1"
+    # build the commandline
+    local exe="find $docs_to_backup $not_to_backup -print"
+    echo $exe
+}
+
+# parse directories provided from commandline
+# create a temporary conf file
+function line_parser {
+    echo "$1" | tr ',' "\n" > /tmp/configuration
+}
+
+# parse commandline
+optstring=":hc:f:i:o:"
+while getopts $optstring name; do
+    case $name in
+        h) usage; exit 0;;
+        c) configuration=$OPTARG;;
+        f) destination=$OPTARG;;
+        o) archive=$OPTARG;;
+        i) 
+            line_parser $OPTARG
+            configuration="/tmp/configuration"
+            ;;
+        :) if [ "$OPTARG" = "c" ]; then
+            echo "You need to specify a configuration file"
+        elif [ "$OPTARG" = "f" ]; then
+            echo "You need to specify a destination directory"
+        elif [ "$OPTARG" = "i" ]; then
+            echo "You need to specify a list of comma separated files"
+        fi
+        usage
+        exit 1
+        ;;
+        *) echo "$OPTARG is not a valid option"; usage; exit 1;;
+    esac
+done
+
+# if no config provided, stick to default
+[ -z "$configuration" ] && configuration="$HOME/.config/backup/conf"
+# if no destination directory provided, use HOME
+[ -z "$destination" ] && destination="$HOME"
+
+# switch to home directory
+cd $HOME
+# parse the configuration
+exe=$( parser $configuration )
+# if exe empty it means the configuration provided didn't exist
+[ -z "$exe" ] && echo "The configuration doesn't exist!" && exit 1
+# find all filenames to backup and not to backup,
+# and save them in a temporary file
+eval "$exe" > /tmp/backup
+# archive name
+[ -z "$archive" ] && archive="$( date +"%Y-%m-%d" )_backup"
+# execute the backup
+path="$destination/$archive"
+mkdir -p $path
+log="$path/$archive.log"
+{ tar --no-recursion -cvz -T /tmp/backup -f "$path/$archive.tar.gx" > $log 2>&1; } &
+echo
+loading
+echo "Operation completed, backup in $path"
+echo
+# vim: ft=bash
