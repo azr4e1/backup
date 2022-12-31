@@ -144,7 +144,7 @@ eval "$exe" > /tmp/backup
 path="$destination/$archive"
 mkdir -p $path
 log="$path/$archive.log"
-{ tar --no-recursion -cvz -T /tmp/backup -f "$path/$archive.tar.gx" > $log 2>&1; } &
+{ tar --no-recursion -cvz -T /tmp/backup -f "$path/$archive.tar.gz" > $log 2>&1; } &
 echo
 loading
 echo "Operation completed, backup in $path"
