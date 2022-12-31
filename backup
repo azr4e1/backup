@@ -128,6 +128,7 @@ done
 [ -z "$configuration" ] && configuration="$HOME/.config/backup/conf"
 # if no destination directory provided, use HOME
 [ -z "$destination" ] && destination="$HOME"
+encryption=$( cat $HOME/.config/backup/encryption )
 
 # switch to home directory
 cd $HOME
@@ -147,6 +148,15 @@ log="$path/$archive.log"
 { tar --no-recursion -cvz -T /tmp/backup -f "$path/$archive.tar.gz" > $log 2>&1; } &
 echo
 loading
-echo "Operation completed, backup in $path"
+echo
+echo "Cleaning up, it may take a couple of minutes..."
+cd $destination
+tar -cvzf $archive.tar.gz $archive > /dev/null 2>&1
+# if encryption id provided, encrypt
+[ -n $encryption ] && gpg --encrypt --sign -r $encryption $path.tar.gz
+/usr/bin/rm -rf $path
+[ -n $encryption ] && /usr/bin/rm -rf $path.tar.gz
+echo
+echo "Operation completed"
 echo
 # vim: ft=bash
