@@ -11,7 +11,7 @@
 function usage {
     cat <<EOF
 
-    backup [-h][-c <config>][-i <files>][-f <backup_directory>][-o <output>]
+    backup [-h][-q][-c <config>][-i <files>][-f <backup_directory>][-o <output>]
 
     backup -h
         print this help and exit
@@ -28,6 +28,9 @@ function usage {
 
     backup -o <output>
         Save the archive as <output>
+
+    backup -q
+        Quiet option. Useful for scripting.
 
 backup is a cli utility that does only one thing, in a very dumb way:
 parses through a configuration file located in '\$HOME/.config/backup/conf' by
@@ -98,8 +101,9 @@ function line_parser {
     echo "$1" | tr ',' "\n" > /tmp/configuration
 }
 
+quiet=0
 # parse commandline
-optstring=":hc:f:i:o:"
+optstring=":hc:f:i:o:q"
 while getopts $optstring name; do
     case $name in
         h) usage; exit 0;;
@@ -110,6 +114,7 @@ while getopts $optstring name; do
             line_parser $OPTARG
             configuration="/tmp/configuration"
             ;;
+        q) quiet=1;;
         :) if [ "$OPTARG" = "c" ]; then
             echo "You need to specify a configuration file"
         elif [ "$OPTARG" = "f" ]; then
@@ -145,18 +150,26 @@ eval "$exe" > /tmp/backup
 path="$destination/$archive"
 mkdir -p $path
 log="$path/$archive.log"
-{ tar --no-recursion -cvz -T /tmp/backup -f "$path/$archive.tar.gz" > $log 2>&1; } &
-echo
-loading
-echo
-echo "Cleaning up, it may take a couple of minutes..."
+if [ "$quiet" -eq 1 ]; then
+    tar --no-recursion -cvz -T /tmp/backup -f "$path/$archive.tar.gz" > $log 2>&1;
+else
+    { tar --no-recursion -cvz -T /tmp/backup -f "$path/$archive.tar.gz" > $log 2>&1; } &
+    echo
+    loading
+    echo
+    echo "Cleaning up, it may take a couple of minutes..."
+fi
+
 cd $destination
 tar -cvzf $archive.tar.gz $archive > /dev/null 2>&1
 # if encryption id provided, encrypt
 [ -n $encryption ] && gpg --encrypt --sign -r $encryption $path.tar.gz
 /usr/bin/rm -rf $path
 [ -n $encryption ] && /usr/bin/rm -rf $path.tar.gz
-echo
-echo "Operation completed"
-echo
+
+if [ "$quiet" -eq 1 ]; then
+    echo
+    echo "Operation completed"
+    echo
+fi
 # vim: ft=bash
